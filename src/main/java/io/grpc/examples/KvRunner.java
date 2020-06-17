@@ -76,7 +76,11 @@ public final class KvRunner {
     if (server != null) {
       throw new IllegalStateException("Already started");
     }
-    server = ServerBuilder.forPort(0).addService(new KvService()).build();
+    server = ServerBuilder
+            .forPort(0)
+            .intercept(new ErrorInjectingInterceptor())
+            .addService(new KvService())
+            .build();
     server.start();
   }
 
