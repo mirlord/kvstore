@@ -1,0 +1,34 @@
+{
+  "methodConfig": [
+    {
+      "name": [
+        {
+          "service": "io.grpc.KeyValueService",
+          "method": "Create"
+        },
+        {
+          "service": "io.grpc.KeyValueService",
+          "method": "Retrieve"
+        },
+        {
+          "service": "io.grpc.KeyValueService",
+          "method": "Update"
+        },
+        {
+          "service": "io.grpc.KeyValueService",
+          "method": "Delete"
+        }
+      ],
+
+      "retryPolicy": {
+        "maxAttempts": 5,
+
+        "initialBackoff": "0.05s",
+        "maxBackoff": "0.5s",
+        "backoffMultiplier": 2,
+
+        "retryableStatusCodes": ["UNAVAILABLE"]
+      }
+    }
+  ]
+}

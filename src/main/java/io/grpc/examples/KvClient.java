@@ -33,6 +33,7 @@ final class KvClient {
   private final Channel channel;
 
   private long rpcCount;
+  private long rpcErrorCount;
 
   KvClient(Channel channel) {
     this.channel = channel;
@@ -40,6 +41,10 @@ final class KvClient {
 
   long getRpcCount() {
     return rpcCount;
+  }
+
+  long getRpcErrorCount() {
+    return rpcErrorCount;
   }
 
   /**
@@ -55,13 +60,10 @@ final class KvClient {
       int command = random.nextInt(4);
       if (command == 0) {
         doCreate(stub);
+      } else if (knownKeys.isEmpty()) {
+        // If we don't know about any keys, retry with a new random action.
         continue;
-      }
-      // If we don't know about any keys, retry with a new random action.
-      if (knownKeys.isEmpty()) {
-        continue;
-      }
-      if (command == 1) {
+      } else if (command == 1) {
         doRetrieve(stub);
       } else if (command == 2) {
         doUpdate(stub);
@@ -89,11 +91,10 @@ final class KvClient {
         throw new RuntimeException("Invalid response");
       }
     } catch (StatusRuntimeException e) {
+      knownKeys.remove(key);
+      rpcErrorCount++;
       if (e.getStatus().getCode() == Code.ALREADY_EXISTS) {
-        knownKeys.remove(key);
         logger.log(Level.INFO, "Key already existed", e);
-      } else {
-        throw e;
       }
     }
   }
@@ -115,7 +116,7 @@ final class KvClient {
         knownKeys.remove(key);
         logger.log(Level.INFO, "Key not found", e);
       } else {
-        throw e;
+        rpcErrorCount++;
       }
     }
   }
@@ -138,7 +139,7 @@ final class KvClient {
         knownKeys.remove(key);
         logger.log(Level.INFO, "Key not found", e);
       } else {
-        throw e;
+        rpcErrorCount++;
       }
     }
   }
@@ -148,10 +149,14 @@ final class KvClient {
    */
   private void doDelete(KeyValueServiceBlockingStub stub) {
     ByteString key = knownKeys.getRandomKey();
-    DeleteResponse res = stub.delete(DeleteRequest.newBuilder().setKey(key).build());
-    knownKeys.remove(key);
-    if (!res.equals(DeleteResponse.getDefaultInstance())) {
-      throw new RuntimeException("Invalid response");
+    try {
+      DeleteResponse res = stub.delete(DeleteRequest.newBuilder().setKey(key).build());
+      knownKeys.remove(key);
+      if (!res.equals(DeleteResponse.getDefaultInstance())) {
+        throw new RuntimeException("Invalid response");
+      }
+    } catch (StatusRuntimeException e) {
+      rpcErrorCount++;
     }
   }
 

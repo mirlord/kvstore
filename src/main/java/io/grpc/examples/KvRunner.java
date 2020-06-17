@@ -1,11 +1,14 @@
 package io.grpc.examples;
 
+import com.google.gson.Gson;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import java.io.IOException;
-import java.util.concurrent.ExecutionException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,12 +39,14 @@ public final class KvRunner {
     }
   }
 
-  private void runClient() throws InterruptedException {
+  private void runClient() throws Exception {
     if (channel != null) {
       throw new IllegalStateException("Already started");
     }
     channel = ManagedChannelBuilder.forTarget("dns:///localhost:" + server.getPort())
         .usePlaintext()
+        .enableRetry()
+        .defaultServiceConfig(loadServiceConfig())
         .build();
     ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     try {
@@ -51,11 +56,20 @@ public final class KvRunner {
       scheduler.schedule(() -> done.set(true), DURATION_SECONDS, TimeUnit.SECONDS);
       client.doClientWork(done);
       double qps = (double) client.getRpcCount() / DURATION_SECONDS;
-      logger.log(Level.INFO, "Did {0} RPCs/s", new Object[]{qps});
+      double er = (double) client.getRpcErrorCount() / client.getRpcCount();
+      logger.log(Level.INFO, "Did {0} RPCs/s with error rate {1}", new Object[]{qps, er});
     } finally {
       scheduler.shutdownNow();
       channel.shutdownNow();
     }
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> loadServiceConfig() throws IOException {
+
+    InputStream in = KvRunner.class.getResourceAsStream("/service_config.json");
+    InputStreamReader reader = new InputStreamReader(in);
+    return new Gson().fromJson(reader, Map.class);
   }
 
   private void startServer() throws IOException {
