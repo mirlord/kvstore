@@ -41,7 +41,7 @@ public final class KvRunner {
       throw new IllegalStateException("Already started");
     }
     channel = ManagedChannelBuilder.forTarget("dns:///localhost:" + server.getPort())
-        .usePlaintext(true)
+        .usePlaintext()
         .build();
     ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     try {

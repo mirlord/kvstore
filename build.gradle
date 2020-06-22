@@ -34,7 +34,12 @@ repositories {
 
 dependencies {
     compile 'org.codehaus.groovy:groovy-all:2.3.11'
-    compile 'io.grpc:grpc-all:1.10.0'
+    compile ('io.grpc:grpc-all:1.30.0') {
+        // No need for both (exclude shaded, use regular 'grpc-netty')
+        exclude group: 'io.grpc', module: 'grpc-netty-shaded'
+        // https://github.com/grpc/grpc-java/issues/7110
+        exclude group: 'io.grpc', module: 'grpc-rls'
+    }
 }
 
 protobuf {
