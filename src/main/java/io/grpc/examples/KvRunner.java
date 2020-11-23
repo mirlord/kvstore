@@ -4,10 +4,13 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.netty.NettyServerBuilder;
+
 import java.io.IOException;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -22,6 +25,8 @@ public final class KvRunner {
   private static final Logger logger = Logger.getLogger(KvRunner.class.getName());
 
   private static final long DURATION_SECONDS = 60;
+
+  private static final int CLIENT_CB_POOL_SIZE = 32;
 
   private Server server;
   private ManagedChannel channel;
@@ -44,9 +49,10 @@ public final class KvRunner {
         .usePlaintext()
         .build();
     ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    ExecutorService clientExecutor = Executors.newFixedThreadPool(CLIENT_CB_POOL_SIZE);
     try {
       AtomicBoolean done = new AtomicBoolean();
-      KvClient client = new KvClient(channel);
+      KvClient client = new KvClient(channel, clientExecutor);
       logger.info("Starting");
       scheduler.schedule(() -> done.set(true), DURATION_SECONDS, TimeUnit.SECONDS);
       client.doClientWork(done);
@@ -54,6 +60,13 @@ public final class KvRunner {
       logger.log(Level.INFO, "Did {0} RPCs/s", new Object[]{qps});
     } finally {
       scheduler.shutdownNow();
+      // Give client callbacks some time to complete
+      Thread.sleep(10_000);
+      clientExecutor.shutdown();
+      if (!clientExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+        logger.log(Level.WARNING, "Couldn't shutdown client-side thread pool correctly");
+        clientExecutor.shutdownNow();
+      }
       channel.shutdownNow();
     }
   }
