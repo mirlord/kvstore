@@ -8,7 +8,6 @@ import com.google.protobuf.ByteString;
 import io.grpc.Channel;
 import io.grpc.Status;
 import io.grpc.Status.Code;
-import io.grpc.StatusRuntimeException;
 import io.grpc.examples.proto.CreateRequest;
 import io.grpc.examples.proto.CreateResponse;
 import io.grpc.examples.proto.DeleteRequest;
@@ -20,6 +19,7 @@ import io.grpc.examples.proto.RetrieveResponse;
 import io.grpc.examples.proto.UpdateRequest;
 import io.grpc.examples.proto.UpdateResponse;
 import java.util.Random;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -42,9 +42,11 @@ final class KvClient {
 
   private AtomicLong rpcCount = new AtomicLong();
   private final Semaphore limiter = new Semaphore(100);
+  private final Executor executor;
 
-  KvClient(Channel channel) {
+  KvClient(Channel channel, Executor executor) {
     this.channel = channel;
+    this.executor = executor;
   }
 
   long getRpcCount() {
@@ -127,7 +129,7 @@ final class KvClient {
           error.compareAndSet(null, t);
         }
       }
-    });
+    }, executor);
   }
 
   /**
@@ -167,7 +169,7 @@ final class KvClient {
           error.compareAndSet(null, t);
         }
       }
-    });
+    }, executor);
   }
 
   /**
@@ -208,7 +210,7 @@ final class KvClient {
           error.compareAndSet(null, t);
         }
       }
-    });
+    }, executor);
   }
 
   /**
@@ -244,7 +246,7 @@ final class KvClient {
           error.compareAndSet(null, t);
         }
       }
-    });
+    }, executor);
   }
 
   /**
