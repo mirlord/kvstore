@@ -1,10 +1,15 @@
 package io.grpc.examples;
 
+import io.grpc.ForwardingServerCallListener;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Metadata;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
-import io.grpc.netty.NettyServerBuilder;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
+import io.grpc.Status;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -56,7 +61,7 @@ public final class KvRunner {
       logger.info("Starting");
       scheduler.schedule(() -> done.set(true), DURATION_SECONDS, TimeUnit.SECONDS);
       client.doClientWork(done);
-      double qps = (double) client.getRpcCount() / DURATION_SECONDS;
+      double qps = (double) client.getOkCount() / DURATION_SECONDS;
       logger.log(Level.INFO, "Did {0} RPCs/s", new Object[]{qps});
     } finally {
       scheduler.shutdownNow();
@@ -75,7 +80,38 @@ public final class KvRunner {
     if (server != null) {
       throw new IllegalStateException("Already started");
     }
-    server = ServerBuilder.forPort(0).addService(new KvService()).build();
+    server = ServerBuilder
+            .forPort(0)
+            .intercept(new ServerInterceptor() {
+
+              private final Semaphore limiter = new Semaphore(32);
+
+              @Override
+              public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> call,
+                                                                           Metadata headers,
+                                                                           ServerCallHandler<ReqT, RespT> next) {
+
+                ServerCall.Listener<ReqT> lstnr = next.startCall(call, headers);
+                if (limiter.tryAcquire()) {
+                  return new ForwardingServerCallListener.SimpleForwardingServerCallListener<ReqT>(lstnr) {
+                    @Override
+                    public void onCancel() {
+                      limiter.release();
+                      super.onCancel();
+                    }
+
+                    @Override
+                    public void onComplete() {
+                      limiter.release();
+                      super.onComplete();
+                    }
+                  };
+                }
+                return new ErrorInjectingListener<>(lstnr, call, Status.UNAVAILABLE);
+              }
+            })
+            .addService(new KvService())
+            .build();
     server.start();
   }
 

@@ -34,6 +34,11 @@ import java.util.logging.Logger;
 final class KvClient {
   private static final Logger logger = Logger.getLogger(KvClient.class.getName());
 
+  static {
+    // Reduce the noise
+    logger.setLevel(Level.WARNING);
+  }
+
   private final int MEAN_KEY_SIZE = 64;
   private final int MEAN_VALUE_SIZE = 65536;
 
@@ -41,6 +46,7 @@ final class KvClient {
   private final Channel channel;
 
   private AtomicLong rpcCount = new AtomicLong();
+  private AtomicLong rejectCount = new AtomicLong();
   private final Semaphore limiter = new Semaphore(100);
   private final Executor executor;
 
@@ -49,8 +55,8 @@ final class KvClient {
     this.executor = executor;
   }
 
-  long getRpcCount() {
-    return rpcCount.get();
+  long getOkCount() {
+    return rpcCount.get() - rejectCount.get();
   }
 
   /**
@@ -125,6 +131,8 @@ final class KvClient {
             knownKeys.remove(key);
           }
           logger.log(Level.INFO, "Key already existed", t);
+        } else if (status.getCode() == Code.UNAVAILABLE) {
+          rejectCount.incrementAndGet();
         } else {
           error.compareAndSet(null, t);
         }
@@ -165,6 +173,8 @@ final class KvClient {
             knownKeys.remove(key);
           }
           logger.log(Level.INFO, "Key not found", t);
+        } else if (status.getCode() == Code.UNAVAILABLE) {
+          rejectCount.incrementAndGet();
         } else {
           error.compareAndSet(null, t);
         }
@@ -206,6 +216,8 @@ final class KvClient {
             knownKeys.remove(key);
           }
           logger.log(Level.INFO, "Key not found", t);
+        } else if (status.getCode() == Code.UNAVAILABLE) {
+          rejectCount.incrementAndGet();
         } else {
           error.compareAndSet(null, t);
         }
@@ -242,6 +254,8 @@ final class KvClient {
         Status status = Status.fromThrowable(t);
         if (status.getCode() == Code.NOT_FOUND) {
           logger.log(Level.INFO, "Key not found", t);
+        } else if (status.getCode() == Code.UNAVAILABLE) {
+          rejectCount.incrementAndGet();
         } else {
           error.compareAndSet(null, t);
         }
